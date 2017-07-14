@@ -1,65 +1,71 @@
 package gee
 
-type ComplexEnum struct {
-	name  string
-	ordinal int
-	order int
+import "strings"
+
+type Literal interface {
+	Name() string
+	Ordinal() int
 }
 
-func (o *ComplexEnum) Name() string {
+type Enum interface {
+	Literals() []Literal
+	Parse(name string) Literal
+}
+func Parse(name string, enum Enum) (ret Literal, ok bool) {
+	for _, lit := range enum.Literals() {
+		if strings.EqualFold(lit.Name(), name) {
+			return lit, true
+		}
+	}
+	return nil, true
+}
+
+
+
+//simple
+type LiteralBase struct {
+	name    string
+	ordinal int
+}
+
+func NewLiteralBase(name string) *LiteralBase {
+	return &LiteralBase{name: name}
+}
+
+func (o *LiteralBase) Name() string {
 	return o.name
 }
 
-func (o *ComplexEnum) Ordinal() int {
+func (o *LiteralBase) Ordinal() int {
 	return o.ordinal
 }
 
-func (o *ComplexEnum) Order() int {
-	return o.order
+type EnumBase struct {
+	literals []Literal
 }
 
-func (o *ComplexEnum) IsLitName1() bool {
-	return o == _complexEnums.LitName1()
+func NewEnumBase(literals []Literal) *EnumBase {
+	return &EnumBase{literals: literals}
 }
 
-func (o *ComplexEnum) IsLitName2() bool {
-	return o == _complexEnums.LitName2()
+func (o *EnumBase) First() Literal {
+	return o.literals[0]
 }
 
-type complexEnums struct {
-	values []*ComplexEnum
+func (o *EnumBase) Last() Literal {
+	return o.literals[len(o.literals)-1]
 }
 
-var _complexEnums = &complexEnums{values: []*ComplexEnum{
-	{name: "LitName1", ordinal: 0, order: 0},
-	{name: "LitName2", ordinal: 1, order: 1}},
+func (o *EnumBase) Literals() []Literal {
+	return o.literals
 }
 
-func ComplexEnums() *complexEnums {
-	return _complexEnums
-}
-
-func (o *complexEnums) Values() []*ComplexEnum {
-	return o.values
-}
-
-func (o *complexEnums) LitName1() *ComplexEnum {
-	return _complexEnums.values[0]
-}
-
-func (o *complexEnums) LitName2() *ComplexEnum {
-	return _complexEnums.values[1]
-}
-
-func (o *complexEnums) ParseComplexEnum(name string) (ret *ComplexEnum, ok bool) {
-	switch name {
-	case "LitName1":
-		ret = o.LitName1()
-	case "LitName2":
-		ret = o.LitName2()
+func (o *EnumBase) Parse(name string) (ret Literal, ok bool) {
+	for _, lit := range o.literals {
+		if strings.EqualFold(lit.Name(), name) {
+			return lit, true
+		}
 	}
-	return
+	return nil, true
 }
-
-
 
