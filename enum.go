@@ -1,6 +1,8 @@
 package gee
 
-import "strings"
+import (
+	"strings"
+)
 
 type Literal interface {
 	Name() string
@@ -9,8 +11,12 @@ type Literal interface {
 
 type Enum interface {
 	Literals() []Literal
-	Parse(name string) Literal
+	Names() []string
+	First() Literal
+	Last() Literal
+	Parse(name string) (ret Literal, ok bool)
 }
+
 func Parse(name string, enum Enum) (ret Literal, ok bool) {
 	for _, lit := range enum.Literals() {
 		if strings.EqualFold(lit.Name(), name) {
@@ -20,47 +26,51 @@ func Parse(name string, enum Enum) (ret Literal, ok bool) {
 	return nil, true
 }
 
-
-
 //simple
-type LiteralBase struct {
-	name    string
-	ordinal int
+type literalBase struct {
+	i int
+	Enum
 }
 
-func NewLiteralBase(name string) *LiteralBase {
-	return &LiteralBase{name: name}
+func (o *literalBase) Name() string {
+	return o.Names()[o.i]
 }
 
-func (o *LiteralBase) Name() string {
-	return o.name
+func (o *literalBase) Ordinal() int {
+	return o.i
 }
 
-func (o *LiteralBase) Ordinal() int {
-	return o.ordinal
-}
-
-type EnumBase struct {
+type enumBase struct {
+	names    []string
 	literals []Literal
 }
 
-func NewEnumBase(literals []Literal) *EnumBase {
-	return &EnumBase{literals: literals}
+func NewEnum(names []string, enumWrapper func(*enumBase) Enum, literalWrapper func(*literalBase) Literal) (ret Enum) {
+	literals := make([]Literal, len(names))
+	ret = enumWrapper(&enumBase{names: names, literals: literals})
+	for i, _ := range names {
+		literals[i] = literalWrapper(&literalBase{i, ret})
+	}
+	return
 }
 
-func (o *EnumBase) First() Literal {
+func (o *enumBase) First() Literal {
 	return o.literals[0]
 }
 
-func (o *EnumBase) Last() Literal {
+func (o *enumBase) Last() Literal {
 	return o.literals[len(o.literals)-1]
 }
 
-func (o *EnumBase) Literals() []Literal {
+func (o *enumBase) Literals() []Literal {
 	return o.literals
 }
 
-func (o *EnumBase) Parse(name string) (ret Literal, ok bool) {
+func (o *enumBase) Names() []string {
+	return o.names
+}
+
+func (o *enumBase) Parse(name string) (ret Literal, ok bool) {
 	for _, lit := range o.literals {
 		if strings.EqualFold(lit.Name(), name) {
 			return lit, true
@@ -68,4 +78,3 @@ func (o *EnumBase) Parse(name string) (ret Literal, ok bool) {
 	}
 	return nil, true
 }
-

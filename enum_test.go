@@ -1,81 +1,53 @@
 package gee
 
-import (
-	"time"
-)
+import "testing"
 
-type ComplexEnum struct {
-	name    string
-	ordinal int
-	order   int
+type ComplexLiteral struct {
+	*literalBase
 }
 
-func (o *ComplexEnum) Name() string {
-	return o.name
+func (o *ComplexLiteral) Order() int {
+	enum := o.Enum.(*complexEnums)
+	return enum.orders[o.i]
 }
 
-func (o *ComplexEnum) Ordinal() int {
-	return o.ordinal
-}
-
-func (o *ComplexEnum) Order() int {
-	return o.order
-}
-
-func (o *ComplexEnum) IsLitName1() bool {
+func (o *ComplexLiteral) IsLitName1() bool {
 	return o == _complexEnums.LitName1()
 }
 
-func (o *ComplexEnum) IsLitName2() bool {
+func (o *ComplexLiteral) IsLitName2() bool {
 	return o == _complexEnums.LitName2()
 }
 
 type complexEnums struct {
-	values []*ComplexEnum
+	*enumBase
+	orders []int
 }
 
-var _complexEnums = &complexEnums{values: []*ComplexEnum{
-	{name: "LitName1", order: 0},
-	{name: "LitName2", order: 1}},
-}
+var _complexEnums = &complexEnums{orders: []int{7, 15}}
+var _enum = NewEnum([]string{"LitName1", "LitName2"},
+	func(enum *enumBase) Enum {
+		_complexEnums.enumBase = enum
+		return _complexEnums
+	},
+	func(literal *literalBase) Literal {
+		return &ComplexLiteral{literalBase: literal}
+	})
 
 func ComplexEnums() *complexEnums {
 	return _complexEnums
 }
 
-func (o *complexEnums) Values() []*ComplexEnum {
-	return o.values
+func (o *complexEnums) LitName1() *ComplexLiteral {
+	return o.Literals()[0].(*ComplexLiteral)
 }
 
-func (o *complexEnums) LitName1() *ComplexEnum {
-	return _complexEnums.values[0]
+func (o *complexEnums) LitName2() *ComplexLiteral {
+	return o.Literals()[1].(*ComplexLiteral)
 }
 
-func (o *complexEnums) LitName2() *ComplexEnum {
-	return _complexEnums.values[1]
-}
-
-func (o *complexEnums) ParseComplexEnum(name string) (ret *ComplexEnum, ok bool) {
-	switch name {
-	case "LitName1":
-		ret = o.LitName1()
-	case "LitName2":
-		ret = o.LitName2()
-	}
-	return
-}
-
-type Trace struct {
-	createdAt time.Time
-	updatedAt time.Time
-	modifiedBy string
-}
-
-func NewTrace(createdAt time.Time, updatedAt time.Time, modifiedBy string) (ret Trace, err error) {
-	ret = Trace{
-		createdAt: createdAt,
-		updatedAt: updatedAt,
-		modifiedBy: modifiedBy,
-	}
-	return
+func TestComplexEnums(t *testing.T) {
+	lit := ComplexEnums().LitName1()
+	println(lit.Name())
+	println(lit.Order())
 }
