@@ -34,7 +34,7 @@ func BuildAccessFinderFromFile(securityFile string) (ret AccessFinder, err error
 	return
 }
 
-func extractAccessKeys(keys []string) (ret map[string]Access) {
+func ExtractAccessKeys(keys []string) (ret map[string]Access) {
 	ret = make(map[string]Access)
 	for _, item := range keys {
 		if _, ok := ret[item]; !ok {

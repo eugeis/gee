@@ -1,11 +1,11 @@
-package valut
+package vault
 
 import (
 	vaultapi "github.com/hashicorp/vault/api"
 	"fmt"
 	"strings"
 	"errors"
-	"gee/as"
+	"github.com/eugeis/gee/as"
 )
 
 type VaultClient struct {
@@ -26,7 +26,7 @@ func NewVaultClient(appName string, token string, address string) (ret *VaultCli
 	return
 }
 
-func (o *VaultClient) fillAccessData(name string, security *Security) (err error) {
+func (o *VaultClient) fillAccessData(name string, security *as.Security) (err error) {
 	var secret *vaultapi.Secret
 	basePath := fmt.Sprintf("secret/%v/%v", o.appName, strings.ToLower(name))
 	for key, item := range security.Access {
@@ -46,11 +46,11 @@ func (o *VaultClient) fillAccessData(name string, security *Security) (err error
 	return
 }
 
-func BuildAccessFinderFromVault(appName string, vaultToken string, vaultAddress string, name string, keys []string) (ret AccessFinder, err error) {
-	security := &Security{}
+func BuildAccessFinderFromVault(appName string, vaultToken string, vaultAddress string, name string, keys []string) (ret as.AccessFinder, err error) {
+	security := &as.Security{}
 	ret = security
 
-	security.Access = extractAccessKeys(keys)
+	security.Access = as.ExtractAccessKeys(keys)
 	var vault *VaultClient
 	vault, err = NewVaultClient(appName, vaultToken, vaultAddress)
 	if err == nil {

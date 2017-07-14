@@ -12,7 +12,7 @@ import (
 	"errors"
 	"time"
 	"text/template"
-	"gee/cfg/props"
+	"github.com/eugeis/gee/cfg/props"
 )
 
 func UnmarshalFile(config interface{}, file string) (err error) {

@@ -5,14 +5,14 @@ import (
 	"os"
 	"fmt"
 	"strings"
-	"gee/cfg"
+	"github.com/eugeis/gee/cfg"
 	"github.com/howeyc/gopass"
 )
 
 func BuildAccessFinderFromConsole(keys []string) (ret AccessFinder, err error) {
 	security := &Security{}
 	ret = security
-	security.Access = extractAccessKeys(keys)
+	security.Access = ExtractAccessKeys(keys)
 	fillAccessDataFromConsole(security)
 	return
 }
