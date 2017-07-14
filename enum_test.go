@@ -1,14 +1,17 @@
 package gee
 
-import "testing"
+import (
+	"testing"
+	"fmt"
+)
 
 type ComplexLiteral struct {
 	*literalBase
+	vendor string
 }
 
-func (o *ComplexLiteral) Order() int {
-	enum := o.Enum.(*complexEnums)
-	return enum.orders[o.i]
+func (o *ComplexLiteral) Vendor() string {
+	return o.vendor
 }
 
 func (o *ComplexLiteral) IsLitName1() bool {
@@ -21,33 +24,34 @@ func (o *ComplexLiteral) IsLitName2() bool {
 
 type complexEnums struct {
 	*enumBase
-	orders []int
+	vendors []string
 }
 
-var _complexEnums = &complexEnums{orders: []int{7, 15}}
-var _enum = NewEnum([]string{"LitName1", "LitName2"},
-	func(enum *enumBase) Enum {
-		_complexEnums.enumBase = enum
-		return _complexEnums
-	},
+var vendors = []string{"Error", "NoError"}
+var _complexEnums = &complexEnums{NewEnum([]string{"LitName1Vendor", "VendorLitName2"},
 	func(literal *literalBase) Literal {
-		return &ComplexLiteral{literalBase: literal}
-	})
+		return &ComplexLiteral{literalBase: literal, vendor: vendors[literal.ordinal]}
+	}), vendors}
 
 func ComplexEnums() *complexEnums {
 	return _complexEnums
 }
 
 func (o *complexEnums) LitName1() *ComplexLiteral {
-	return o.Literals()[0].(*ComplexLiteral)
+	return o.Get(0)
 }
 
 func (o *complexEnums) LitName2() *ComplexLiteral {
-	return o.Literals()[1].(*ComplexLiteral)
+	return o.Get(1)
+}
+
+func (o *complexEnums) Get(ordinal int) *ComplexLiteral {
+	return o.Literals()[ordinal].(*ComplexLiteral)
 }
 
 func TestComplexEnums(t *testing.T) {
 	lit := ComplexEnums().LitName1()
 	println(lit.Name())
-	println(lit.Order())
+	println(lit.Vendor())
+	println(fmt.Sprintf("%v", ComplexEnums().Get(1)))
 }

@@ -1,10 +1,11 @@
-package as
+package valut
 
 import (
 	vaultapi "github.com/hashicorp/vault/api"
 	"fmt"
 	"strings"
 	"errors"
+	"gee/as"
 )
 
 type VaultClient struct {
