@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	"fmt"
+	"time"
 )
 
 type AggregateInitializer struct {
@@ -90,7 +91,7 @@ func (o *AggregateInitializer) RegisterForEvent(handler eventhorizon.EventHandle
 }
 
 type AggregateStoreEvent interface {
-	StoreEvent(eventhorizon.EventType, eventhorizon.EventData) eventhorizon.Event
+	StoreEvent(eventhorizon.EventType, eventhorizon.EventData, time.Time) eventhorizon.Event
 }
 
 type DelegateCommandHandler interface {
@@ -143,7 +144,7 @@ func EntityNotExists(entityId eventhorizon.UUID, aggregateType eventhorizon.Aggr
 	return errors.New(fmt.Sprintf("Entity not exists with id=%v and aggregateType=%v", entityId, aggregateType))
 }
 
-
 func IdsDismatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) error {
-	return errors.New(fmt.Sprintf("Dismatch entity id and current id, %v != %v,", entityId, currentId, aggregateType))
+	return errors.New(fmt.Sprintf("Dismatch entity id and current id, %v != %v, for aggregateType=%v",
+		entityId, currentId, aggregateType))
 }
