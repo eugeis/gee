@@ -7,6 +7,11 @@ import (
 	"github.com/pkg/errors"
 	"fmt"
 	"time"
+	"net/http"
+	"encoding/json"
+	"io"
+	"html"
+	"github.com/gorilla/schema"
 )
 
 type AggregateInitializer struct {
@@ -147,4 +152,40 @@ func EntityNotExists(entityId eventhorizon.UUID, aggregateType eventhorizon.Aggr
 func IdsDismatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) error {
 	return errors.New(fmt.Sprintf("Dismatch entity id and current id, %v != %v, for aggregateType=%v",
 		entityId, currentId, aggregateType))
+}
+
+type HttpCommandHandler struct {
+	Context    context.Context
+	CommandBus eventhorizon.CommandBus
+}
+
+func NewHttpCommandHandler(context context.Context, commandBus eventhorizon.CommandBus) (ret *HttpCommandHandler) {
+	ret = &HttpCommandHandler{
+		Context:    context,
+		CommandBus: commandBus,
+	}
+	return
+}
+
+func (o *HttpCommandHandler) HandleCommand(command eventhorizon.Command, w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(command)
+	defer r.Body.Close()
+	if err == io.EOF {
+		if err = r.ParseForm(); err == nil {
+			err = schema.NewDecoder().Decode(command, r.Form)
+		}
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Can't decode body to command %v because of %v", command, err)
+		return
+	}
+
+	if err := o.CommandBus.HandleCommand(o.Context, command); err != nil {
+		w.WriteHeader(http.StatusExpectationFailed)
+		fmt.Fprintf(w, "Can't execute command %v because of %v", command, err)
+		return
+	}
+	fmt.Fprintf(w, "Succefully executed command %v from %v", command, html.EscapeString(r.URL.Path))
 }
