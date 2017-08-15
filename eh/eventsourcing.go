@@ -149,10 +149,34 @@ func EntityNotExists(entityId eventhorizon.UUID, aggregateType eventhorizon.Aggr
 	return errors.New(fmt.Sprintf("Entity not exists with id=%v and aggregateType=%v", entityId, aggregateType))
 }
 
+func IdNotDefined(currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) error {
+	return errors.New(fmt.Sprintf("Id not defined for aggregateType=%v", aggregateType))
+}
+
 func IdsDismatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) error {
 	return errors.New(fmt.Sprintf("Dismatch entity id and current id, %v != %v, for aggregateType=%v",
 		entityId, currentId, aggregateType))
 }
+
+func ValidateNewId(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) (ret error) {
+	if len(entityId) > 0 {
+		ret = EntityAlreadyExists(entityId, aggregateType)
+	} else if len(currentId) == 0 {
+		ret = IdNotDefined(currentId, aggregateType)
+	}
+	return
+}
+
+func ValidateIdsMatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) (ret error) {
+	if len(entityId) == 0 {
+		ret = EntityNotExists(entityId, aggregateType)
+	} else if entityId != currentId {
+		ret = IdsDismatch(entityId, currentId, aggregateType)
+	}
+	return
+}
+
+
 
 type HttpCommandHandler struct {
 	Context    context.Context
@@ -178,14 +202,14 @@ func (o *HttpCommandHandler) HandleCommand(command eventhorizon.Command, w http.
 	}
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Can't decode body to command %v because of %v", command, err)
+		fmt.Fprintf(w, "Can't decode body to command %T %v because of %v", command, command, err)
 		return
 	}
 
 	if err := o.CommandBus.HandleCommand(o.Context, command); err != nil {
 		w.WriteHeader(http.StatusExpectationFailed)
-		fmt.Fprintf(w, "Can't execute command %v because of %v", command, err)
+		fmt.Fprintf(w, "Can't execute command %T %v because of %v", command, command, err)
 		return
 	}
-	fmt.Fprintf(w, "Succefully executed command %v from %v", command, html.EscapeString(r.URL.Path))
+	fmt.Fprintf(w, "Succefully executed command %T %v from %v", command, command, html.EscapeString(r.URL.Path))
 }
