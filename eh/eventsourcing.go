@@ -12,6 +12,7 @@ import (
 	"io"
 	"html"
 	"github.com/gorilla/schema"
+	"github.com/looplab/eventhorizon/eventhandler/projector"
 )
 
 type AggregateInitializer struct {
@@ -26,25 +27,30 @@ type AggregateInitializer struct {
 	commandBus     eventhorizon.CommandBus
 	repository     *eventhorizon.EventSourcingRepository
 	commandHandler *eventhorizon.AggregateCommandHandler
+	projector      DelegateEventHandler
 	setupCallbacks []func() error
+	readRepos      func(name string) eventhorizon.ReadWriteRepo
 }
 
 func NewAggregateInitializer(aggregateType eventhorizon.AggregateType,
 	aggregateFactory func(id eventhorizon.UUID) eventhorizon.Aggregate, commands []enum.Literal, events []enum.Literal,
+	projector DelegateEventHandler,
 	setupCallbacks []func() error, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
-	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandBus) (ret *AggregateInitializer) {
+	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandBus,
+	readRepos func(name string) eventhorizon.ReadWriteRepo) (ret *AggregateInitializer) {
 	ret = &AggregateInitializer{
 		aggregateType:    aggregateType,
 		aggregateFactory: aggregateFactory,
 		commands:         commands,
 		events:           events,
+		projector:        projector,
 		setupCallbacks:   setupCallbacks,
 
 		eventStore:     eventStore,
 		eventBus:       eventBus,
 		eventPublisher: eventPublisher,
 		commandBus:     commandBus,
-
+		readRepos:      readRepos,
 	}
 	return
 }
@@ -62,6 +68,10 @@ func (o *AggregateInitializer) Setup() (err error) {
 	}
 
 	if err = o.registerCommands(); err != nil {
+		return
+	}
+
+	if err = o.registerProjector(); err != nil {
 		return
 	}
 
@@ -85,6 +95,12 @@ func (o *AggregateInitializer) registerCommands() (err error) {
 	return
 }
 
+func (o *AggregateInitializer) registerProjector() (err error) {
+	projectorType := string(o.aggregateType)
+	o.RegisterForAllEvents(projector.NewEventHandler(NewProjector(projectorType, o.projector), o.readRepos(projectorType)))
+	return
+}
+
 func (o *AggregateInitializer) RegisterForAllEvents(handler eventhorizon.EventHandler) {
 	for _, item := range o.events {
 		o.eventBus.AddHandler(handler, eventhorizon.EventType(item.Name()))
@@ -104,7 +120,7 @@ type DelegateCommandHandler interface {
 }
 
 type DelegateEventHandler interface {
-	Apply(event eventhorizon.Event, entity interface{}) error
+	Apply(event eventhorizon.Event, model interface{}) error
 }
 
 type AggregateBase struct {
@@ -176,8 +192,6 @@ func ValidateIdsMatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, a
 	return
 }
 
-
-
 type HttpCommandHandler struct {
 	Context    context.Context
 	CommandBus eventhorizon.CommandBus
@@ -212,4 +226,27 @@ func (o *HttpCommandHandler) HandleCommand(command eventhorizon.Command, w http.
 		return
 	}
 	fmt.Fprintf(w, "Succefully executed command %T %v from %v", command, command, html.EscapeString(r.URL.Path))
+}
+
+type ProjectorEventHandler struct {
+	DelegateEventHandler
+	projectorType projector.Type
+}
+
+func NewProjector(projectorType string, eventHandler DelegateEventHandler) (ret *ProjectorEventHandler) {
+	ret = &ProjectorEventHandler{
+		projectorType:        projector.Type(projectorType),
+		DelegateEventHandler: eventHandler,
+	}
+	return
+}
+
+func (o *ProjectorEventHandler) ProjectorType() projector.Type {
+	return o.projectorType
+}
+
+func (o *ProjectorEventHandler) Project(ctx context.Context, event eventhorizon.Event, model interface{}) (ret interface{}, err error) {
+	ret = model
+	err = o.Apply(event, model)
+	return
 }
