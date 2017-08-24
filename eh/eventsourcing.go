@@ -18,39 +18,46 @@ import (
 type AggregateInitializer struct {
 	aggregateType    eventhorizon.AggregateType
 	aggregateFactory func(id eventhorizon.UUID) eventhorizon.Aggregate
+	modelFactory     func() interface{}
 	commands         []enum.Literal
 	events           []enum.Literal
 
-	eventStore     eventhorizon.EventStore
-	eventBus       eventhorizon.EventBus
-	eventPublisher eventhorizon.EventPublisher
-	commandBus     eventhorizon.CommandBus
-	repository     *eventhorizon.EventSourcingRepository
-	commandHandler *eventhorizon.AggregateCommandHandler
-	projector      DelegateEventHandler
-	setupCallbacks []func() error
-	readRepos      func(name string) eventhorizon.ReadWriteRepo
+	eventStore              eventhorizon.EventStore
+	eventBus                eventhorizon.EventBus
+	eventPublisher          eventhorizon.EventPublisher
+	commandBus              eventhorizon.CommandBus
+	repository              *eventhorizon.EventSourcingRepository
+	commandHandler          *eventhorizon.AggregateCommandHandler
+	projectorListener       DelegateEventHandler
+	setupCallbacks          []func() error
+	readRepos               func(name string) eventhorizon.ReadWriteRepo
+	DefaultProjectorEnabled bool
+	ProjectorRepo           eventhorizon.ReadRepo
 }
 
 func NewAggregateInitializer(aggregateType eventhorizon.AggregateType,
-	aggregateFactory func(id eventhorizon.UUID) eventhorizon.Aggregate, commands []enum.Literal, events []enum.Literal,
-	projector DelegateEventHandler,
+	aggregateFactory func(id eventhorizon.UUID) eventhorizon.Aggregate,
+	modelFactory func() interface{},
+	commands []enum.Literal, events []enum.Literal,
+	projectorListener DelegateEventHandler,
 	setupCallbacks []func() error, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
 	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandBus,
 	readRepos func(name string) eventhorizon.ReadWriteRepo) (ret *AggregateInitializer) {
 	ret = &AggregateInitializer{
-		aggregateType:    aggregateType,
-		aggregateFactory: aggregateFactory,
-		commands:         commands,
-		events:           events,
-		projector:        projector,
-		setupCallbacks:   setupCallbacks,
+		aggregateType:     aggregateType,
+		aggregateFactory:  aggregateFactory,
+		modelFactory:      modelFactory,
+		commands:          commands,
+		events:            events,
+		projectorListener: projectorListener,
+		setupCallbacks:    setupCallbacks,
 
-		eventStore:     eventStore,
-		eventBus:       eventBus,
-		eventPublisher: eventPublisher,
-		commandBus:     commandBus,
-		readRepos:      readRepos,
+		eventStore:              eventStore,
+		eventBus:                eventBus,
+		eventPublisher:          eventPublisher,
+		commandBus:              commandBus,
+		readRepos:               readRepos,
+		DefaultProjectorEnabled: true,
 	}
 	return
 }
@@ -71,8 +78,10 @@ func (o *AggregateInitializer) Setup() (err error) {
 		return
 	}
 
-	if err = o.registerProjector(); err != nil {
-		return
+	if o.DefaultProjectorEnabled {
+		if err = o.registerProjector(); err != nil {
+			return
+		}
 	}
 
 	if o.setupCallbacks != nil {
@@ -96,8 +105,17 @@ func (o *AggregateInitializer) registerCommands() (err error) {
 }
 
 func (o *AggregateInitializer) registerProjector() (err error) {
+	o.ProjectorRepo, err = o.RegisterProjector(o.projectorListener)
+	return
+}
+
+func (o *AggregateInitializer) RegisterProjector(listener DelegateEventHandler) (ret eventhorizon.ReadRepo, err error) {
 	projectorType := string(o.aggregateType)
-	o.RegisterForAllEvents(projector.NewEventHandler(NewProjector(projectorType, o.projector), o.readRepos(projectorType)))
+	repo := o.readRepos(projectorType)
+	projector := projector.NewEventHandler(NewProjector(projectorType, listener), repo)
+	projector.SetModel(o.modelFactory)
+	o.RegisterForAllEvents(projector)
+	ret = repo
 	return
 }
 
@@ -127,25 +145,25 @@ type AggregateBase struct {
 	*eventhorizon.AggregateBase
 	DelegateCommandHandler
 	DelegateEventHandler
-	Entity interface{}
+	Model interface{}
 }
 
 func (o *AggregateBase) HandleCommand(ctx context.Context, cmd eventhorizon.Command) error {
-	return o.Execute(cmd, o.Entity, o.AggregateBase)
+	return o.Execute(cmd, o.Model, o.AggregateBase)
 }
 
 func (o *AggregateBase) ApplyEvent(ctx context.Context, event eventhorizon.Event) error {
-	return o.Apply(event, o.Entity)
+	return o.Apply(event, o.Model)
 }
 
 func NewAggregateBase(aggregateType eventhorizon.AggregateType, id eventhorizon.UUID,
-	commandHandler DelegateCommandHandler,
-	eventHandler DelegateEventHandler, entity interface{}) *AggregateBase {
+	commandHandler DelegateCommandHandler, eventHandler DelegateEventHandler,
+	model interface{}) *AggregateBase {
 	return &AggregateBase{
 		AggregateBase:          eventhorizon.NewAggregateBase(aggregateType, id),
 		DelegateCommandHandler: commandHandler,
 		DelegateEventHandler:   eventHandler,
-		Entity:                 entity,
+		Model:                  model,
 	}
 }
 
@@ -185,7 +203,7 @@ func ValidateNewId(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggr
 
 func ValidateIdsMatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) (ret error) {
 	if len(entityId) == 0 {
-		ret = EntityNotExists(entityId, aggregateType)
+		ret = EntityNotExists(currentId, aggregateType)
 	} else if entityId != currentId {
 		ret = IdsDismatch(entityId, currentId, aggregateType)
 	}
