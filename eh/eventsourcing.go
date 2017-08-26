@@ -210,6 +210,23 @@ func ValidateIdsMatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, a
 	return
 }
 
+type HttpQueryHandler struct {
+}
+
+func (o *HttpQueryHandler) HandleResult(ret interface{}, err error, method string, w http.ResponseWriter, r *http.Request) {
+	if err == nil {
+		var js []byte
+		if js, err = json.Marshal(ret); err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(js)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	} else {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
 type HttpCommandHandler struct {
 	Context    context.Context
 	CommandBus eventhorizon.CommandBus
@@ -233,14 +250,15 @@ func (o *HttpCommandHandler) HandleCommand(command eventhorizon.Command, w http.
 		}
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Can't decode body to command %T %v because of %v", command, command, err)
+		http.Error(w, fmt.Sprintf("Can't decode body to command %T %v because of %v", command, command, err),
+			http.StatusBadRequest)
 		return
 	}
 
 	if err := o.CommandBus.HandleCommand(o.Context, command); err != nil {
+		http.Error(w, fmt.Sprintf("Can't execute command %T %v because of %v", command, command, err),
+			http.StatusExpectationFailed)
 		w.WriteHeader(http.StatusExpectationFailed)
-		fmt.Fprintf(w, "Can't execute command %T %v because of %v", command, command, err)
 		return
 	}
 	fmt.Fprintf(w, "Succefully executed command %T %v from %v", command, command, html.EscapeString(r.URL.Path))
