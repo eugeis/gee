@@ -192,6 +192,10 @@ func IdsDismatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggreg
 		entityId, currentId, aggregateType))
 }
 
+func QueryNotImplemented(queryName string) error {
+	return errors.New(fmt.Sprintf("Query not implemented for %v", queryName))
+}
+
 func ValidateNewId(entityId eventhorizon.UUID, currentId eventhorizon.UUID, aggregateType eventhorizon.AggregateType) (ret error) {
 	if len(entityId) > 0 {
 		ret = EntityAlreadyExists(entityId, aggregateType)
