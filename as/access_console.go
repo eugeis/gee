@@ -9,34 +9,45 @@ import (
 	"github.com/howeyc/gopass"
 )
 
-func BuildAccessFinderFromConsole(keys []string) (ret AccessFinder, err error) {
-	security := &Security{}
-	ret = security
-	security.Access = ExtractAccessKeys(keys)
-	fillAccessDataFromConsole(security)
+func NewAccessFinderFromConsole(keys []string) (ret AccessFinder, err error) {
+	security := FillAccessKeys(keys, NewSecurity())
+	ret, err = fillAccessDataFromConsole(security)
 	return
 }
 
-func fillAccessDataFromConsole(security *Security) (err error) {
+func NewAccessFinderFromConsoleSingle(key string, user string, password string) (ret AccessFinder, err error) {
+	security := NewSecurity().AddAccess(key, user, password)
+	if len(user) == 0 || len(password) == 0 {
+		security, err = fillAccessDataFromConsole(security)
+	}
+	return security, err
+}
+
+func fillAccessDataFromConsole(security *Security) (ret *Security, err error) {
+	ret = security
 	reader := bufio.NewReader(os.Stdin)
 	var text string
 	var pw []byte
 	for key, item := range security.Access {
 		fmt.Printf("Enter access data for '%v'\n", key)
 
-		fmt.Print("User: ")
-		text, err = reader.ReadString('\n')
-		if err != nil {
-			break
+		if len(item.User) == 0 {
+			fmt.Print("User: ")
+			text, err = reader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			item.User = strings.TrimSpace(text)
 		}
-		item.User = strings.TrimSpace(text)
 
-		fmt.Print("Password: ")
-		pw, err = gopass.GetPasswdMasked()
-		if err != nil {
-			break
+		if len(item.Password) == 0 {
+			fmt.Print("Password: ")
+			pw, err = gopass.GetPasswdMasked()
+			if err != nil {
+				break
+			}
+			item.Password = string(pw)
 		}
-		item.Password = string(pw)
 		security.Access[key] = item
 	}
 	return

@@ -47,10 +47,9 @@ func (o *VaultClient) fillAccessData(name string, security *as.Security) (err er
 }
 
 func BuildAccessFinderFromVault(appName string, vaultToken string, vaultAddress string, name string, keys []string) (ret as.AccessFinder, err error) {
-	security := &as.Security{}
+	security := as.FillAccessKeys(keys, &as.Security{})
 	ret = security
 
-	security.Access = as.ExtractAccessKeys(keys)
 	var vault *VaultClient
 	vault, err = NewVaultClient(appName, vaultToken, vaultAddress)
 	if err == nil {

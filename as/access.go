@@ -18,6 +18,10 @@ type Security struct {
 	Access map[string]Access
 }
 
+func NewSecurity() *Security {
+	return &Security{Access: make(map[string]Access)}
+}
+
 func (o *Security) FindAccess(key string) (ret Access, err error) {
 	var ok bool
 	ret, ok = o.Access[key]
@@ -27,18 +31,28 @@ func (o *Security) FindAccess(key string) (ret Access, err error) {
 	return
 }
 
-func BuildAccessFinderFromFile(securityFile string) (ret AccessFinder, err error) {
+func (o *Security) AddAccess(key string, user string, password string) (ret *Security) {
+	ret = o
+	o.Access[key] = Access{User: user, Password: password}
+	return
+}
+
+func NewAccessFinderSingle(accessKey, user string, password string) AccessFinder {
+	return &Security{Access: map[string]Access{accessKey: {User: user, Password: password}}}
+}
+
+func NewAccessFinderFromFile(securityFile string) (ret AccessFinder, err error) {
 	security := &Security{}
 	ret = security
 	err = fillAccessData(security, securityFile)
 	return
 }
 
-func ExtractAccessKeys(keys []string) (ret map[string]Access) {
-	ret = make(map[string]Access)
+func FillAccessKeys(keys []string, security *Security) (ret *Security) {
+	ret = security
 	for _, item := range keys {
-		if _, ok := ret[item]; !ok {
-			ret[item] = Access{}
+		if _, ok := security.Access[item]; !ok {
+			security.Access[item] = Access{}
 		}
 	}
 	return
