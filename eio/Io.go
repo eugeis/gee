@@ -1,6 +1,9 @@
 package eio
 
-import "io"
+import (
+	"io"
+	"strconv"
+)
 
 type MapWriter interface {
 	WriteMap(data map[string]interface{}) error
@@ -30,4 +33,22 @@ func NewCollectMapWriter() *CollectMapWriter {
 func (o *CollectMapWriter) WriteMap(data map[string]interface{}) (err error) {
 	o.Data = append(o.Data, data)
 	return
+}
+
+func JoinInt64(ns []int64, sep string) string {
+	if len(ns) == 0 {
+		return ""
+	}
+
+	// Appr. 3 chars per num plus the comma.
+	estimate := len(ns) * 4
+	b := make([]byte, 0, estimate)
+	// Or simply
+	//   b := []byte{}
+	for _, n := range ns {
+		b = strconv.AppendInt(b, n, 10)
+		b = append(b, ',')
+	}
+	b = b[:len(b)-1]
+	return string(b)
 }
