@@ -30,7 +30,7 @@ type AggregateInitializer struct {
 	commandHandler          *eventhorizon.AggregateCommandHandler
 	projectorListener       DelegateEventHandler
 	setupCallbacks          []func() error
-	readRepos               func(name string) eventhorizon.ReadWriteRepo
+	readRepos               func(name string) (ret eventhorizon.ReadWriteRepo, err error)
 	DefaultProjectorEnabled bool
 	ProjectorRepo           eventhorizon.ReadRepo
 }
@@ -42,7 +42,7 @@ func NewAggregateInitializer(aggregateType eventhorizon.AggregateType,
 	projectorListener DelegateEventHandler,
 	setupCallbacks []func() error, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
 	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandBus,
-	readRepos func(name string) eventhorizon.ReadWriteRepo) (ret *AggregateInitializer) {
+	readRepos func(name string) (ret eventhorizon.ReadWriteRepo, err error)) (ret *AggregateInitializer) {
 	ret = &AggregateInitializer{
 		aggregateType:     aggregateType,
 		aggregateFactory:  aggregateFactory,
@@ -111,11 +111,13 @@ func (o *AggregateInitializer) registerProjector() (err error) {
 
 func (o *AggregateInitializer) RegisterProjector(listener DelegateEventHandler) (ret eventhorizon.ReadRepo, err error) {
 	projectorType := string(o.aggregateType)
-	repo := o.readRepos(projectorType)
-	projector := projector.NewEventHandler(NewProjector(projectorType, listener), repo)
-	projector.SetModel(o.modelFactory)
-	o.RegisterForAllEvents(projector)
-	ret = repo
+	var repo eventhorizon.ReadWriteRepo
+	if repo, err = o.readRepos(projectorType); err == nil {
+		projector := projector.NewEventHandler(NewProjector(projectorType, listener), repo)
+		projector.SetModel(o.modelFactory)
+		o.RegisterForAllEvents(projector)
+		ret = repo
+	}
 	return
 }
 
