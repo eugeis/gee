@@ -1,6 +1,8 @@
 package eh
 
 import (
+	"github.com/looplab/eventhorizon/aggregatestore/events"
+	"github.com/looplab/eventhorizon/commandhandler/aggregate"
 	"github.com/looplab/eventhorizon"
 	"github.com/eugeis/gee/enum"
 	"context"
@@ -26,11 +28,11 @@ type AggregateInitializer struct {
 	eventBus                eventhorizon.EventBus
 	eventPublisher          eventhorizon.EventPublisher
 	commandBus              eventhorizon.CommandBus
-	repository              *eventhorizon.EventSourcingRepository
-	commandHandler          *eventhorizon.AggregateCommandHandler
+	aggregateStore          *events.AggregateStore
+	commandHandler          *aggregate.CommandHandler
 	projectorListener       DelegateEventHandler
 	setupCallbacks          []func() error
-	readRepos               func(name string) (ret eventhorizon.ReadWriteRepo, err error)
+	readRepos               func(name string, factory func() interface{}) eventhorizon.ReadWriteRepo
 	DefaultProjectorEnabled bool
 	ProjectorRepo           eventhorizon.ReadRepo
 }
@@ -42,7 +44,7 @@ func NewAggregateInitializer(aggregateType eventhorizon.AggregateType,
 	projectorListener DelegateEventHandler,
 	setupCallbacks []func() error, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
 	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandBus,
-	readRepos func(name string) (ret eventhorizon.ReadWriteRepo, err error)) (ret *AggregateInitializer) {
+	readRepos func(name string, factory func() interface{}) eventhorizon.ReadWriteRepo) (ret *AggregateInitializer) {
 	ret = &AggregateInitializer{
 		aggregateType:     aggregateType,
 		aggregateFactory:  aggregateFactory,
@@ -66,11 +68,11 @@ func (o *AggregateInitializer) Setup() (err error) {
 	//register aggregate factory
 	eventhorizon.RegisterAggregate(o.aggregateFactory)
 
-	if o.repository, err = eventhorizon.NewEventSourcingRepository(o.eventStore, o.eventBus); err != nil {
+	if o.aggregateStore, err = events.NewAggregateStore(o.eventStore, o.eventBus); err != nil {
 		return
 	}
 
-	if o.commandHandler, err = eventhorizon.NewAggregateCommandHandler(o.repository); err != nil {
+	if o.commandHandler, err = aggregate.NewCommandHandler(o.aggregateStore); err != nil {
 		return
 	}
 
@@ -111,13 +113,11 @@ func (o *AggregateInitializer) registerProjector() (err error) {
 
 func (o *AggregateInitializer) RegisterProjector(listener DelegateEventHandler) (ret eventhorizon.ReadRepo, err error) {
 	projectorType := string(o.aggregateType)
-	var repo eventhorizon.ReadWriteRepo
-	if repo, err = o.readRepos(projectorType); err == nil {
-		projector := projector.NewEventHandler(NewProjector(projectorType, listener), repo)
-		projector.SetModel(o.modelFactory)
-		o.RegisterForAllEvents(projector)
-		ret = repo
-	}
+	repo := o.readRepos(projectorType, o.modelFactory)
+	projector := projector.NewEventHandler(NewProjector(projectorType, listener), repo)
+	projector.SetModel(o.modelFactory)
+	o.RegisterForAllEvents(projector)
+	ret = repo
 	return
 }
 
@@ -290,5 +290,86 @@ func (o *ProjectorEventHandler) ProjectorType() projector.Type {
 func (o *ProjectorEventHandler) Project(ctx context.Context, event eventhorizon.Event, model interface{}) (ret interface{}, err error) {
 	ret = model
 	err = o.Apply(event, model)
+	return
+}
+
+type ReadWriteRepoDelegate struct {
+	Factory func() (ret eventhorizon.ReadWriteRepo, err error)
+	repo    eventhorizon.ReadWriteRepo
+}
+
+func (o *ReadWriteRepoDelegate) delegate() (ret eventhorizon.ReadWriteRepo, err error) {
+	if o.repo == nil {
+		o.repo, err = o.Factory()
+	}
+	ret = o.repo
+	return
+}
+
+func (o *ReadWriteRepoDelegate) Save(ctx context.Context, id eventhorizon.UUID, model interface{}) (err error) {
+	var repo eventhorizon.ReadWriteRepo
+	if repo, err = o.delegate(); err == nil {
+		err = repo.Save(ctx, id, model)
+	}
+	return
+}
+
+func (o *ReadWriteRepoDelegate) Remove(ctx context.Context, id eventhorizon.UUID) (err error) {
+	var repo eventhorizon.ReadWriteRepo
+	if repo, err = o.delegate(); err == nil {
+		err = repo.Remove(ctx, id)
+	}
+	return
+}
+
+func (o *ReadWriteRepoDelegate) Parent() (ret eventhorizon.ReadRepo) {
+	if repo, err := o.delegate(); err == nil {
+		ret = repo.Parent()
+	}
+	return
+}
+
+func (o *ReadWriteRepoDelegate) Find(ctx context.Context, id eventhorizon.UUID) (ret interface{}, err error) {
+	var repo eventhorizon.ReadWriteRepo
+	if repo, err = o.delegate(); err == nil {
+		ret, err = repo.Find(ctx, id)
+	}
+	return
+}
+
+func (o *ReadWriteRepoDelegate) FindAll(ctx context.Context) (ret []interface{}, err error) {
+	var repo eventhorizon.ReadWriteRepo
+	if repo, err = o.delegate(); err == nil {
+		ret, err = repo.FindAll(ctx)
+	}
+	return
+}
+
+type EventStoreDelegate struct {
+	Factory    func() (ret eventhorizon.EventStore, err error)
+	eventStore eventhorizon.EventStore
+}
+
+func (o *EventStoreDelegate) delegate() (ret eventhorizon.EventStore, err error) {
+	if o.eventStore == nil {
+		o.eventStore, err = o.Factory()
+	}
+	ret = o.eventStore
+	return
+}
+
+func (o *EventStoreDelegate) Save(ctx context.Context, events []eventhorizon.Event, originalVersion int) (err error) {
+	var eventStore eventhorizon.EventStore
+	if eventStore, err = o.delegate(); err == nil {
+		err = eventStore.Save(ctx, events, originalVersion)
+	}
+	return
+}
+
+func (o *EventStoreDelegate) Load(ctx context.Context, aggregateType eventhorizon.AggregateType, id eventhorizon.UUID) (ret []eventhorizon.Event, err error) {
+	var eventStore eventhorizon.EventStore
+	if eventStore, err = o.delegate(); err == nil {
+		ret, err = eventStore.Load(ctx, aggregateType, id)
+	}
 	return
 }
