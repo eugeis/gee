@@ -9,3 +9,5 @@ const QueryType = "qType"
 const QueryTypeCount = "count"
 const QueryTypeExist = "exist"
 const QueryTypeFind = "find"
+
+const Command = "command"
