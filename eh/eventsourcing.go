@@ -13,8 +13,8 @@ import (
 	"encoding/json"
 	"io"
 	"html"
-	"github.com/gorilla/schema"
 	"github.com/looplab/eventhorizon/eventhandler/projector"
+	"github.com/eugeis/gee/net"
 )
 
 type AggregateInitializer struct {
@@ -233,12 +233,6 @@ func (o *HttpQueryHandler) HandleResult(ret interface{}, err error, method strin
 	}
 }
 
-type Result struct {
-	Ok  bool
-	Err error
-	Msg string
-}
-
 type HttpCommandHandler struct {
 	Context    context.Context
 	CommandBus eventhorizon.CommandBus
@@ -254,53 +248,21 @@ func NewHttpCommandHandler(context context.Context, commandBus eventhorizon.Comm
 
 func (o *HttpCommandHandler) HandleCommand(command eventhorizon.Command, w http.ResponseWriter, r *http.Request) {
 	//decode body to command
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(command)
-	defer r.Body.Close()
-	if err == io.EOF {
-		err = nil
-	}
-
-	//decode url params to command
-	if err == nil {
-		if err = r.ParseForm(); err == nil {
-			newDecoder := schema.NewDecoder()
-			newDecoder.IgnoreUnknownKeys(true)
-			err = newDecoder.Decode(command, r.Form)
-		}
-	}
+	err := net.Decode(command, r)
 
 	if err != nil && err != io.EOF {
-		RenderError(w, err, fmt.Sprintf("Can't decode body to command %T", command), http.StatusBadRequest)
+		net.ResponseResultErr(err, fmt.Sprintf("Can't decode body to command %T", command),
+			http.StatusBadRequest, w)
 		return
 	}
 
 	if err = o.CommandBus.HandleCommand(o.Context, command); err != nil {
-		RenderError(w, err, fmt.Sprintf("Can't execute command %T %v", command, command), http.StatusExpectationFailed)
+		net.ResponseResultErr(err, fmt.Sprintf("Can't execute command %T %v", command, command),
+			http.StatusExpectationFailed, w)
 	} else {
-		RenderOk(w, fmt.Sprintf("Succefully executed command %T %v from %v", command, command, html.EscapeString(r.URL.Path)))
+		net.ResponseResultOk(fmt.Sprintf("Succefully executed command %T %v from %v", command, command,
+			html.EscapeString(r.URL.Path)), w)
 	}
-}
-
-func RenderError(w http.ResponseWriter, err error, msg string, code int) {
-	if js, parseErr := json.Marshal(Result{Ok: false, Msg: msg, Err: err}); parseErr == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(code)
-		w.Write(js)
-	} else {
-		http.Error(w, parseErr.Error(), http.StatusInternalServerError)
-	}
-	return
-}
-
-func RenderOk(w http.ResponseWriter, msg string) {
-	if js, parseErr := json.Marshal(Result{Ok: true, Msg: msg}); parseErr == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(js)
-	} else {
-		http.Error(w, parseErr.Error(), http.StatusInternalServerError)
-	}
-	return
 }
 
 type ProjectorEventHandler struct {
