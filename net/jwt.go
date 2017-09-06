@@ -9,7 +9,6 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"crypto/rsa"
-	"golang.org/x/crypto/bcrypt"
 	"os/user"
 )
 
@@ -156,14 +155,6 @@ func (o *JwtController) ExtractToken(r *http.Request) (ret string, err error) {
 		}
 	} else {
 		ret, err = request.AuthorizationHeaderExtractor.ExtractToken(r)
-	}
-	return
-}
-
-func Encrypt(str string) (ret string, err error) {
-	var encrypted []byte
-	if encrypted, err = bcrypt.GenerateFromPassword([]byte(str), bcrypt.DefaultCost); err == nil {
-		ret = string(encrypted)
 	}
 	return
 }
