@@ -1,16 +1,5 @@
 package net
 
-//  Generate RSA signing files via shell (adjust as needed):
-//
-//  $ openssl genrsa -out app.rsa 1024
-//  $ openssl rsa -in app.rsa -pubout > app.rsa.pub
-//
-// Code borrowed and modified from the following sources:
-// https://www.youtube.com/watch?v=dgJFeqeXVKw
-// https://goo.gl/ofVjK4
-// https://github.com/dgrijalva/jwt-go
-//
-
 import (
 	"fmt"
 	"io/ioutil"
@@ -20,6 +9,8 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"crypto/rsa"
+	"golang.org/x/crypto/bcrypt"
+	"os/user"
 )
 
 type UserCredentials struct {
@@ -36,8 +27,9 @@ type Token struct {
 }
 
 type JwtController struct {
-	privKeyPath string //app.rsa
-	pubKeyPath  string //app.rsa.pub
+	privKeyPath   string //app.rsa, e.g. $ openssl genrsa -out app.rsa 1024
+	pubKeyPath    string //app.rsa.pub, e.g $ openssl rsa -in app.rsa -pubout > app.rsa.pub
+	useHttpCookie bool
 
 	authenticate func(UserCredentials) error
 
@@ -45,9 +37,26 @@ type JwtController struct {
 	signKey   *rsa.PrivateKey
 }
 
-func NewJwtController(privKeyPath, pubKeyPath string,
+func NewJwtController(privKeyPath, pubKeyPath string, useHttpCookie bool,
 	authenticator func(UserCredentials) error) *JwtController {
-	return &JwtController{privKeyPath: privKeyPath, pubKeyPath: pubKeyPath, authenticate: authenticator}
+	return &JwtController{privKeyPath: privKeyPath, pubKeyPath: pubKeyPath, useHttpCookie: useHttpCookie,
+		authenticate: authenticator}
+}
+
+func NewJwtControllerApp(appName string, authenticator func(UserCredentials) error) (ret *JwtController) {
+	if usr, err := user.Current(); err == nil {
+		ret = NewJwtController(
+			fmt.Sprintf("%v/.rsa/%v.rsa", usr.HomeDir, appName),
+			fmt.Sprintf("%v/.rsa/%v.rsa.pub", usr.HomeDir, appName), true,
+			authenticator)
+		if err := ret.Setup(); err != nil {
+			panic(err)
+		}
+		return
+	} else {
+		panic(err)
+	}
+	return
 }
 
 func (o *JwtController) Setup() (err error) {
@@ -68,7 +77,6 @@ func (o *JwtController) Setup() (err error) {
 
 func (o *JwtController) LoginHandler() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		var user UserCredentials
 		if err := Decode(&user, r); err != nil {
 			ResponseResultErr(err, "Can't retrieve credentials", http.StatusForbidden, w)
@@ -90,8 +98,20 @@ func (o *JwtController) LoginHandler() http.HandlerFunc {
 			ResponseResultErr(err, "Error while signing the token", http.StatusInternalServerError, w)
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
-			ResponseJson(Token{tokenString}, w)
+			if o.useHttpCookie {
+				expireCookie := time.Now().Add(time.Hour * 1)
+				cookie := http.Cookie{Name: "Auth", Value: tokenString, Expires: expireCookie, HttpOnly: true}
+				http.SetCookie(w, &cookie)
+			} else {
+				ResponseJson(Token{tokenString}, w)
+			}
 		}
+	})
+}
+
+func (o *JwtController) LogoutHandler() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		o.Logout(w)
 	})
 }
 
@@ -103,7 +123,7 @@ func (o *JwtController) ValidateTokenHandler(protected http.Handler) http.Handle
 
 func (o *JwtController) ValidateToken(w http.ResponseWriter, r *http.Request, next http.Handler) {
 
-	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,
+	token, err := request.ParseFromRequest(r, o,
 		func(token *jwt.Token) (interface{}, error) {
 			return o.verifyKey, nil
 		})
@@ -119,4 +139,31 @@ func (o *JwtController) ValidateToken(w http.ResponseWriter, r *http.Request, ne
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprint(w, "Unauthorized access to this resource")
 	}
+}
+
+func (o *JwtController) Logout(w http.ResponseWriter) {
+	if o.useHttpCookie {
+		deleteCookie := http.Cookie{Name: "Auth", Value: "none", Expires: time.Now()}
+		http.SetCookie(w, &deleteCookie)
+	}
+}
+
+func (o *JwtController) ExtractToken(r *http.Request) (ret string, err error) {
+	if o.useHttpCookie {
+		var cookie *http.Cookie
+		if cookie, err = r.Cookie("Auth"); err == nil {
+			ret = cookie.Value
+		}
+	} else {
+		ret, err = request.AuthorizationHeaderExtractor.ExtractToken(r)
+	}
+	return
+}
+
+func Encrypt(str string) (ret string, err error) {
+	var encrypted []byte
+	if encrypted, err = bcrypt.GenerateFromPassword([]byte(str), bcrypt.DefaultCost); err == nil {
+		ret = string(encrypted)
+	}
+	return
 }
