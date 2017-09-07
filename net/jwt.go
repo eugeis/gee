@@ -21,8 +21,9 @@ type Response struct {
 	Data string `json:"data"`
 }
 
-type Token struct {
-	Token string `json:"token"`
+type AccountToken struct {
+	Account interface{}
+	Token   string `json:"token"`
 }
 
 type JwtController struct {
@@ -30,19 +31,19 @@ type JwtController struct {
 	pubKeyPath    string //app.rsa.pub, e.g $ openssl rsa -in app.rsa -pubout > app.rsa.pub
 	useHttpCookie bool
 
-	authenticate func(UserCredentials) error
+	authenticate func(UserCredentials) (ret interface{}, err error)
 
 	verifyKey *rsa.PublicKey
 	signKey   *rsa.PrivateKey
 }
 
 func NewJwtController(privKeyPath, pubKeyPath string, useHttpCookie bool,
-	authenticator func(UserCredentials) error) *JwtController {
+	authenticator func(UserCredentials) (ret interface{}, err error)) *JwtController {
 	return &JwtController{privKeyPath: privKeyPath, pubKeyPath: pubKeyPath, useHttpCookie: useHttpCookie,
 		authenticate: authenticator}
 }
 
-func NewJwtControllerApp(appName string, authenticator func(UserCredentials) error) (ret *JwtController) {
+func NewJwtControllerApp(appName string, authenticator func(UserCredentials) (ret interface{}, err error)) (ret *JwtController) {
 	if usr, err := user.Current(); err == nil {
 		ret = NewJwtController(
 			fmt.Sprintf("%v/.rsa/%v.rsa", usr.HomeDir, appName),
@@ -82,27 +83,25 @@ func (o *JwtController) LoginHandler() http.HandlerFunc {
 			return
 		}
 
-		if err := o.authenticate(user); err != nil {
+		if account, err := o.authenticate(user); err != nil {
 			ResponseResultErr(err, "Wrong credentials", http.StatusForbidden, w)
-			return
-		}
-
-		token := jwt.New(jwt.SigningMethodRS256)
-		claims := make(jwt.MapClaims)
-		claims["exp"] = time.Now().Add(time.Hour * time.Duration(1)).Unix()
-		claims["iat"] = time.Now().Unix()
-		token.Claims = claims
-
-		if tokenString, err := token.SignedString(o.signKey); err != nil {
-			ResponseResultErr(err, "Error while signing the token", http.StatusInternalServerError, w)
-			w.WriteHeader(http.StatusInternalServerError)
 		} else {
-			if o.useHttpCookie {
-				expireCookie := time.Now().Add(time.Hour * 1)
-				cookie := http.Cookie{Name: "Auth", Value: tokenString, Expires: expireCookie, HttpOnly: true}
-				http.SetCookie(w, &cookie)
+			token := jwt.New(jwt.SigningMethodRS256)
+			claims := make(jwt.MapClaims)
+			claims["exp"] = time.Now().Add(time.Hour * time.Duration(1)).Unix()
+			claims["iat"] = time.Now().Unix()
+			token.Claims = claims
+
+			if tokenString, err := token.SignedString(o.signKey); err != nil {
+				ResponseResultErr(err, "Error while signing the token", http.StatusInternalServerError, w)
+				w.WriteHeader(http.StatusInternalServerError)
 			} else {
-				ResponseJson(Token{tokenString}, w)
+				if o.useHttpCookie {
+					expireCookie := time.Now().Add(time.Hour * 1)
+					cookie := http.Cookie{Name: "Auth", Value: tokenString, Expires: expireCookie, HttpOnly: true}
+					http.SetCookie(w, &cookie)
+				}
+				ResponseJson(AccountToken{Account: account, Token: tokenString}, w)
 			}
 		}
 	})
