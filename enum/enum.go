@@ -9,6 +9,10 @@ type Literal interface {
 	Ordinal() int
 }
 
+type EnumBaseJson struct {
+	Name string `json:"name"`
+}
+
 func Parse(name string, literals []Literal) (ret Literal, ok bool) {
 	for _, lit := range literals {
 		if strings.EqualFold(lit.Name(), name) {
