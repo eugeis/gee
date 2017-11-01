@@ -15,40 +15,41 @@ import (
 	"html"
 	"github.com/looplab/eventhorizon/eventhandler/projector"
 	"github.com/eugeis/gee/net"
+	"github.com/looplab/eventhorizon/commandhandler/bus"
 )
 
 type AggregateInitializer struct {
 	aggregateType    eventhorizon.AggregateType
 	aggregateFactory func(id eventhorizon.UUID) eventhorizon.Aggregate
-	modelFactory     func() interface{}
+	entityFactory     func() eventhorizon.Entity
 	commands         []enum.Literal
 	events           []enum.Literal
 
 	eventStore              eventhorizon.EventStore
 	eventBus                eventhorizon.EventBus
 	eventPublisher          eventhorizon.EventPublisher
-	commandBus              eventhorizon.CommandBus
+	commandBus              *bus.CommandHandler
 	aggregateStore          *events.AggregateStore
 	commandHandler          *aggregate.CommandHandler
 	projectorListener       DelegateEventHandler
 	setupCallbacks          []func() error
-	readRepos               func(name string, factory func() interface{}) eventhorizon.ReadWriteRepo
+	readRepos               func(name string, factory func() eventhorizon.Entity) eventhorizon.ReadWriteRepo
 	DefaultProjectorEnabled bool
 	ProjectorRepo           eventhorizon.ReadRepo
 }
 
 func NewAggregateInitializer(aggregateType eventhorizon.AggregateType,
 	aggregateFactory func(id eventhorizon.UUID) eventhorizon.Aggregate,
-	modelFactory func() interface{},
+	entityFactory func() eventhorizon.Entity,
 	commands []enum.Literal, events []enum.Literal,
 	projectorListener DelegateEventHandler,
 	setupCallbacks []func() error, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
-	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandBus,
-	readRepos func(name string, factory func() interface{}) eventhorizon.ReadWriteRepo) (ret *AggregateInitializer) {
+	eventPublisher eventhorizon.EventPublisher, commandBus *bus.CommandHandler,
+	readRepos func(name string, factory func() eventhorizon.Entity) eventhorizon.ReadWriteRepo) (ret *AggregateInitializer) {
 	ret = &AggregateInitializer{
 		aggregateType:     aggregateType,
 		aggregateFactory:  aggregateFactory,
-		modelFactory:      modelFactory,
+		entityFactory:      entityFactory,
 		commands:          commands,
 		events:            events,
 		projectorListener: projectorListener,
@@ -72,7 +73,7 @@ func (o *AggregateInitializer) Setup() (err error) {
 		return
 	}
 
-	if o.commandHandler, err = aggregate.NewCommandHandler(o.aggregateStore); err != nil {
+	if o.commandHandler, err = aggregate.NewCommandHandler(o.aggregateType, o.aggregateStore); err != nil {
 		return
 	}
 
@@ -96,9 +97,6 @@ func (o *AggregateInitializer) Setup() (err error) {
 
 func (o *AggregateInitializer) registerCommands() (err error) {
 	for _, item := range o.commands {
-		if err = o.commandHandler.SetAggregate(o.aggregateType, eventhorizon.CommandType(item.Name())); err != nil {
-			return
-		}
 		if err = o.commandBus.SetHandler(o.commandHandler, eventhorizon.CommandType(item.Name())); err != nil {
 			return
 		}
@@ -113,9 +111,9 @@ func (o *AggregateInitializer) registerProjector() (err error) {
 
 func (o *AggregateInitializer) RegisterProjector(listener DelegateEventHandler) (ret eventhorizon.ReadRepo, err error) {
 	projectorType := string(o.aggregateType)
-	repo := o.readRepos(projectorType, o.modelFactory)
+	repo := o.readRepos(projectorType, o.entityFactory)
 	projector := projector.NewEventHandler(NewProjector(projectorType, listener), repo)
-	projector.SetModel(o.modelFactory)
+	projector.SetEntityFactory(o.entityFactory)
 	o.RegisterForAllEvents(projector)
 	ret = repo
 	return
@@ -136,18 +134,18 @@ type AggregateStoreEvent interface {
 }
 
 type DelegateCommandHandler interface {
-	Execute(cmd eventhorizon.Command, entity interface{}, store AggregateStoreEvent) error
+	Execute(cmd eventhorizon.Command, entity eventhorizon.Entity, store AggregateStoreEvent) error
 }
 
 type DelegateEventHandler interface {
-	Apply(event eventhorizon.Event, model interface{}) error
+	Apply(event eventhorizon.Event, entity eventhorizon.Entity) error
 }
 
 type AggregateBase struct {
-	*eventhorizon.AggregateBase
+	*events.AggregateBase
 	DelegateCommandHandler
 	DelegateEventHandler
-	Model interface{}
+	Model eventhorizon.Entity
 }
 
 func (o *AggregateBase) HandleCommand(ctx context.Context, cmd eventhorizon.Command) error {
@@ -160,12 +158,12 @@ func (o *AggregateBase) ApplyEvent(ctx context.Context, event eventhorizon.Event
 
 func NewAggregateBase(aggregateType eventhorizon.AggregateType, id eventhorizon.UUID,
 	commandHandler DelegateCommandHandler, eventHandler DelegateEventHandler,
-	model interface{}) *AggregateBase {
+	entity eventhorizon.Entity) *AggregateBase {
 	return &AggregateBase{
-		AggregateBase:          eventhorizon.NewAggregateBase(aggregateType, id),
+		AggregateBase:          events.NewAggregateBase(aggregateType, id),
 		DelegateCommandHandler: commandHandler,
 		DelegateEventHandler:   eventHandler,
-		Model:                  model,
+		Model:                  entity,
 	}
 }
 
@@ -235,10 +233,10 @@ func (o *HttpQueryHandler) HandleResult(ret interface{}, err error, method strin
 
 type HttpCommandHandler struct {
 	Context    context.Context
-	CommandBus eventhorizon.CommandBus
+	CommandBus eventhorizon.CommandHandler
 }
 
-func NewHttpCommandHandler(context context.Context, commandBus eventhorizon.CommandBus) (ret *HttpCommandHandler) {
+func NewHttpCommandHandler(context context.Context, commandBus eventhorizon.CommandHandler) (ret *HttpCommandHandler) {
 	ret = &HttpCommandHandler{
 		Context:    context,
 		CommandBus: commandBus,
@@ -282,9 +280,9 @@ func (o *ProjectorEventHandler) ProjectorType() projector.Type {
 	return o.projectorType
 }
 
-func (o *ProjectorEventHandler) Project(ctx context.Context, event eventhorizon.Event, model interface{}) (ret interface{}, err error) {
-	ret = model
-	err = o.Apply(event, model)
+func (o *ProjectorEventHandler) Project(ctx context.Context, event eventhorizon.Event, entity eventhorizon.Entity) (ret eventhorizon.Entity, err error) {
+	ret = entity
+	err = o.Apply(event, entity)
 	return
 }
 
@@ -301,10 +299,10 @@ func (o *ReadWriteRepoDelegate) delegate() (ret eventhorizon.ReadWriteRepo, err 
 	return
 }
 
-func (o *ReadWriteRepoDelegate) Save(ctx context.Context, id eventhorizon.UUID, model interface{}) (err error) {
+func (o *ReadWriteRepoDelegate) Save(ctx context.Context, entity eventhorizon.Entity) (err error) {
 	var repo eventhorizon.ReadWriteRepo
 	if repo, err = o.delegate(); err == nil {
-		err = repo.Save(ctx, id, model)
+		err = repo.Save(ctx, entity)
 	}
 	return
 }
@@ -324,7 +322,7 @@ func (o *ReadWriteRepoDelegate) Parent() (ret eventhorizon.ReadRepo) {
 	return
 }
 
-func (o *ReadWriteRepoDelegate) Find(ctx context.Context, id eventhorizon.UUID) (ret interface{}, err error) {
+func (o *ReadWriteRepoDelegate) Find(ctx context.Context, id eventhorizon.UUID) (ret eventhorizon.Entity, err error) {
 	var repo eventhorizon.ReadWriteRepo
 	if repo, err = o.delegate(); err == nil {
 		ret, err = repo.Find(ctx, id)
@@ -332,7 +330,7 @@ func (o *ReadWriteRepoDelegate) Find(ctx context.Context, id eventhorizon.UUID) 
 	return
 }
 
-func (o *ReadWriteRepoDelegate) FindAll(ctx context.Context) (ret []interface{}, err error) {
+func (o *ReadWriteRepoDelegate) FindAll(ctx context.Context) (ret []eventhorizon.Entity, err error) {
 	var repo eventhorizon.ReadWriteRepo
 	if repo, err = o.delegate(); err == nil {
 		ret, err = repo.FindAll(ctx)

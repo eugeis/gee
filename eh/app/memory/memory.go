@@ -1,7 +1,7 @@
 package memory
 
 import (
-	commandbus "github.com/looplab/eventhorizon/commandbus/local"
+	"github.com/looplab/eventhorizon/commandhandler/bus"
 	eventbus "github.com/looplab/eventhorizon/eventbus/local"
 	eventstore "github.com/looplab/eventhorizon/eventstore/memory"
 	eventpublisher "github.com/looplab/eventhorizon/publisher/local"
@@ -21,10 +21,10 @@ func NewAppMemory(productName string, appName string, secure bool) *app.AppBase 
 	eventBus.SetPublisher(eventPublisher)
 
 	// Create the command bus.
-	commandBus := commandbus.NewCommandBus()
+	commandBus := bus.NewCommandHandler()
 
 	repos := make(map[string]eventhorizon.ReadWriteRepo)
-	readRepos := func(name string, factory func() interface{}) (ret eventhorizon.ReadWriteRepo) {
+	readRepos := func(name string, factory func() eventhorizon.Entity) (ret eventhorizon.ReadWriteRepo) {
 		if item, ok := repos[name]; !ok {
 			ret = &eh.ReadWriteRepoDelegate{Factory: func() (ret eventhorizon.ReadWriteRepo, err error) {
 				return repo.NewRepo(), nil

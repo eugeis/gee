@@ -18,10 +18,10 @@ type AppBase struct {
 	EventStore        eventhorizon.EventStore
 	EventBus          eventhorizon.EventBus
 	EventPublisher    eventhorizon.EventPublisher
-	CommandBus        eventhorizon.CommandBus
+	CommandBus        eventhorizon.CommandHandler
 	ProjectorListener eh.DelegateEventHandler
 	SetupCallbacks    []func() error
-	ReadRepos         func(name string, factory func() interface{}) eventhorizon.ReadWriteRepo
+	ReadRepos         func(name string, factory func() eventhorizon.Entity) eventhorizon.ReadWriteRepo
 
 	Log    *lg.DebugLogger
 	Ctx    context.Context
@@ -33,8 +33,8 @@ type AppBase struct {
 }
 
 func NewAppBase(productName string, appName string, secure bool, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
-	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandBus,
-	readRepos func(name string, factory func() interface{}) eventhorizon.ReadWriteRepo) (ret *AppBase) {
+	eventPublisher eventhorizon.EventPublisher, commandBus eventhorizon.CommandHandler,
+	readRepos func(name string, factory func() eventhorizon.Entity) eventhorizon.ReadWriteRepo) (ret *AppBase) {
 	ret = &AppBase{
 		ProductName:    productName,
 		Name:           appName,
