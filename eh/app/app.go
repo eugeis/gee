@@ -1,16 +1,17 @@
 package app
 
 import (
-	"github.com/looplab/eventhorizon"
+	"context"
+	"fmt"
+	"net/http"
+
 	"github.com/eugeis/gee/eh"
 	"github.com/eugeis/gee/lg"
 	"github.com/eugeis/gee/net"
-	"net/http"
-	"fmt"
 	"github.com/gorilla/mux"
-	"context"
-	"github.com/rs/cors"
+	"github.com/looplab/eventhorizon"
 	"github.com/looplab/eventhorizon/commandhandler/bus"
+	"github.com/rs/cors"
 )
 
 type AppBase struct {
@@ -18,7 +19,6 @@ type AppBase struct {
 	Name              string
 	EventStore        eventhorizon.EventStore
 	EventBus          eventhorizon.EventBus
-	EventPublisher    eventhorizon.EventPublisher
 	CommandBus        *bus.CommandHandler
 	ProjectorListener eh.DelegateEventHandler
 	SetupCallbacks    []func() error
@@ -34,17 +34,16 @@ type AppBase struct {
 }
 
 func NewAppBase(productName string, appName string, secure bool, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
-	eventPublisher eventhorizon.EventPublisher, commandBus *bus.CommandHandler,
+	commandBus *bus.CommandHandler,
 	readRepos func(name string, factory func() eventhorizon.Entity) eventhorizon.ReadWriteRepo) (ret *AppBase) {
 	ret = &AppBase{
-		ProductName:    productName,
-		Name:           appName,
-		Secure:         secure,
-		EventStore:     eventStore,
-		EventBus:       eventBus,
-		EventPublisher: eventPublisher,
-		CommandBus:     commandBus,
-		ReadRepos:      readRepos,
+		ProductName: productName,
+		Name:        appName,
+		Secure:      secure,
+		EventStore:  eventStore,
+		EventBus:    eventBus,
+		CommandBus:  commandBus,
+		ReadRepos:   readRepos,
 
 		Log:    lg.NewLogger(appName),
 		Ctx:    eventhorizon.NewContextWithNamespace(context.Background(), appName),

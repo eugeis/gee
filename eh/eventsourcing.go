@@ -1,33 +1,33 @@
 package eh
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"html"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/eugeis/gee/enum"
+	"github.com/eugeis/gee/net"
+	"github.com/looplab/eventhorizon"
 	"github.com/looplab/eventhorizon/aggregatestore/events"
 	"github.com/looplab/eventhorizon/commandhandler/aggregate"
-	"github.com/looplab/eventhorizon"
-	"github.com/eugeis/gee/enum"
-	"context"
-	"github.com/pkg/errors"
-	"fmt"
-	"time"
-	"net/http"
-	"encoding/json"
-	"io"
-	"html"
-	"github.com/looplab/eventhorizon/eventhandler/projector"
-	"github.com/eugeis/gee/net"
 	"github.com/looplab/eventhorizon/commandhandler/bus"
+	"github.com/looplab/eventhorizon/eventhandler/projector"
+	"github.com/pkg/errors"
 )
 
 type AggregateInitializer struct {
 	aggregateType    eventhorizon.AggregateType
 	aggregateFactory func(id eventhorizon.UUID) eventhorizon.Aggregate
-	entityFactory     func() eventhorizon.Entity
+	entityFactory    func() eventhorizon.Entity
 	commands         []enum.Literal
 	events           []enum.Literal
 
 	eventStore              eventhorizon.EventStore
 	eventBus                eventhorizon.EventBus
-	eventPublisher          eventhorizon.EventPublisher
 	commandBus              *bus.CommandHandler
 	aggregateStore          *events.AggregateStore
 	commandHandler          *aggregate.CommandHandler
@@ -43,13 +43,12 @@ func NewAggregateInitializer(aggregateType eventhorizon.AggregateType,
 	entityFactory func() eventhorizon.Entity,
 	commands []enum.Literal, events []enum.Literal,
 	projectorListener DelegateEventHandler,
-	setupCallbacks []func() error, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus,
-	eventPublisher eventhorizon.EventPublisher, commandBus *bus.CommandHandler,
+	setupCallbacks []func() error, eventStore eventhorizon.EventStore, eventBus eventhorizon.EventBus, commandBus *bus.CommandHandler,
 	readRepos func(name string, factory func() eventhorizon.Entity) eventhorizon.ReadWriteRepo) (ret *AggregateInitializer) {
 	ret = &AggregateInitializer{
 		aggregateType:     aggregateType,
 		aggregateFactory:  aggregateFactory,
-		entityFactory:      entityFactory,
+		entityFactory:     entityFactory,
 		commands:          commands,
 		events:            events,
 		projectorListener: projectorListener,
@@ -57,7 +56,6 @@ func NewAggregateInitializer(aggregateType eventhorizon.AggregateType,
 
 		eventStore:              eventStore,
 		eventBus:                eventBus,
-		eventPublisher:          eventPublisher,
 		commandBus:              commandBus,
 		readRepos:               readRepos,
 		DefaultProjectorEnabled: true,
@@ -121,12 +119,12 @@ func (o *AggregateInitializer) RegisterProjector(listener DelegateEventHandler) 
 
 func (o *AggregateInitializer) RegisterForAllEvents(handler eventhorizon.EventHandler) {
 	for _, item := range o.events {
-		o.eventBus.AddHandler(handler, eventhorizon.EventType(item.Name()))
+		o.eventBus.AddHandler(eventhorizon.MatchEvent(eventhorizon.EventType(item.Name())), handler)
 	}
 }
 
 func (o *AggregateInitializer) RegisterForEvent(handler eventhorizon.EventHandler, event enum.Literal) {
-	o.eventBus.AddHandler(handler, eventhorizon.EventType(event.Name()))
+	o.eventBus.AddHandler(eventhorizon.MatchEvent(eventhorizon.EventType(event.Name())), handler)
 }
 
 type AggregateStoreEvent interface {
@@ -215,6 +213,11 @@ func ValidateIdsMatch(entityId eventhorizon.UUID, currentId eventhorizon.UUID, a
 }
 
 type HttpQueryHandler struct {
+}
+
+func NewHttpQueryHandler() (ret *HttpQueryHandler) {
+	ret = &HttpQueryHandler{}
+	return
 }
 
 func (o *HttpQueryHandler) HandleResult(ret interface{}, err error, method string, w http.ResponseWriter, r *http.Request) {

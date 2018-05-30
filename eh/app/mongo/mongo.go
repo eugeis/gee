@@ -1,27 +1,23 @@
 package mongo
 
 import (
-	"github.com/looplab/eventhorizon"
-	eventbus "github.com/looplab/eventhorizon/eventbus/local"
-	eventstore "github.com/looplab/eventhorizon/eventstore/mongodb"
-	eventpublisher "github.com/looplab/eventhorizon/publisher/local"
-	repo "github.com/looplab/eventhorizon/repo/mongodb"
 	"github.com/eugeis/gee/eh"
 	"github.com/eugeis/gee/eh/app"
+	"github.com/looplab/eventhorizon"
 	"github.com/looplab/eventhorizon/commandhandler/bus"
+	eventbus "github.com/looplab/eventhorizon/eventbus/local"
+	eventstore "github.com/looplab/eventhorizon/eventstore/mongodb"
+	repo "github.com/looplab/eventhorizon/repo/mongodb"
 )
 
 func NewAppMongo(productName string, appName string, secure bool, mongoUrl string) *app.AppBase {
 	// Create the event store.
-	eventStore := &eh.EventStoreDelegate{Factory:
-	func() (ret eventhorizon.EventStore, err error) {
+	eventStore := &eh.EventStoreDelegate{Factory: func() (ret eventhorizon.EventStore, err error) {
 		return eventstore.NewEventStore("localhost", productName)
 	}}
 
 	// Create the event bus that distributes events.
 	eventBus := eventbus.NewEventBus()
-	eventPublisher := eventpublisher.NewEventPublisher()
-	eventBus.SetPublisher(eventPublisher)
 
 	// Create the command bus.
 	commandBus := bus.NewCommandHandler()
@@ -43,5 +39,5 @@ func NewAppMongo(productName string, appName string, secure bool, mongoUrl strin
 		}
 		return
 	}
-	return app.NewAppBase(productName, appName, secure, eventStore, eventBus, eventPublisher, commandBus, readRepos)
+	return app.NewAppBase(productName, appName, secure, eventStore, eventBus, commandBus, readRepos)
 }

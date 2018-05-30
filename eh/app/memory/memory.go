@@ -1,14 +1,13 @@
 package memory
 
 import (
+	"github.com/eugeis/gee/eh"
+	"github.com/eugeis/gee/eh/app"
+	"github.com/looplab/eventhorizon"
 	"github.com/looplab/eventhorizon/commandhandler/bus"
 	eventbus "github.com/looplab/eventhorizon/eventbus/local"
 	eventstore "github.com/looplab/eventhorizon/eventstore/memory"
-	eventpublisher "github.com/looplab/eventhorizon/publisher/local"
 	repo "github.com/looplab/eventhorizon/repo/memory"
-	"github.com/eugeis/gee/eh/app"
-	"github.com/eugeis/gee/eh"
-	"github.com/looplab/eventhorizon"
 )
 
 func NewAppMemory(productName string, appName string, secure bool) *app.AppBase {
@@ -17,8 +16,6 @@ func NewAppMemory(productName string, appName string, secure bool) *app.AppBase 
 
 	// Create the event bus that distributes events.
 	eventBus := eventbus.NewEventBus()
-	eventPublisher := eventpublisher.NewEventPublisher()
-	eventBus.SetPublisher(eventPublisher)
 
 	// Create the command bus.
 	commandBus := bus.NewCommandHandler()
@@ -35,5 +32,5 @@ func NewAppMemory(productName string, appName string, secure bool) *app.AppBase 
 		}
 		return
 	}
-	return app.NewAppBase(productName, appName, secure, eventStore, eventBus, eventPublisher, commandBus, readRepos)
+	return app.NewAppBase(productName, appName, secure, eventStore, eventBus, commandBus, readRepos)
 }
